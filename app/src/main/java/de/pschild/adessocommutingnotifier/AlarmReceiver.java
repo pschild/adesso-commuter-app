@@ -15,7 +15,6 @@ public class AlarmReceiver extends BroadcastReceiver {
 
     // start foreground service
     Intent serviceIntent = new Intent(context, LocationUpdatesService.class);
-    serviceIntent.putExtra("inputExtra", "Foreground Service from Alarm");
     context.startForegroundService(serviceIntent);
   }
 }
