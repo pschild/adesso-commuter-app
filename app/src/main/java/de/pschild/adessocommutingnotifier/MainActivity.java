@@ -31,12 +31,12 @@ public class MainActivity extends AppCompatActivity {
 
     // what
     Intent intent = new Intent(this, AlarmReceiver.class);
-    alarmIntent = PendingIntent.getBroadcast(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+    alarmIntent = PendingIntent.getBroadcast(this, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
 
     // when
     Calendar calendar = Calendar.getInstance();
-    calendar.set(Calendar.HOUR_OF_DAY, 9);
-    calendar.set(Calendar.MINUTE, 12);
+    calendar.set(Calendar.HOUR_OF_DAY, 16);
+    calendar.set(Calendar.MINUTE, 30);
     calendar.set(Calendar.SECOND, 0);
 
     // schedule!
@@ -45,9 +45,12 @@ public class MainActivity extends AppCompatActivity {
 
     // trigger each day at datetime
     if (calendar.getTimeInMillis() < System.currentTimeMillis()) {
-      alarmMgr.setRepeating(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis() + AlarmManager.INTERVAL_DAY, AlarmManager.INTERVAL_DAY, alarmIntent);
+      alarmMgr.setRepeating(AlarmManager.RTC_WAKEUP,
+          calendar.getTimeInMillis() + AlarmManager.INTERVAL_DAY, AlarmManager.INTERVAL_DAY,
+          alarmIntent);
     } else {
-      alarmMgr.setRepeating(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), AlarmManager.INTERVAL_DAY, alarmIntent);
+      alarmMgr.setRepeating(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(),
+          AlarmManager.INTERVAL_DAY, alarmIntent);
     }
 
     // trigger x seconds after start

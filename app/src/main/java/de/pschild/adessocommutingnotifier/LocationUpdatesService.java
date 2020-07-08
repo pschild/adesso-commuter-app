@@ -13,6 +13,13 @@ import android.os.IBinder;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import com.android.volley.DefaultRetryPolicy;
+import com.android.volley.Request.Method;
+import com.android.volley.RequestQueue;
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.JsonObjectRequest;
+import com.android.volley.toolbox.Volley;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
@@ -22,6 +29,7 @@ import com.google.android.gms.tasks.OnSuccessListener;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import org.json.JSONObject;
 
 public class LocationUpdatesService extends Service {
 
@@ -56,6 +64,7 @@ public class LocationUpdatesService extends Service {
         for (Location location : locationResult.getLocations()) {
           if (location != null) {
             updateNotification("[" + location.getLatitude() + ", " + location.getLongitude() + "]");
+            callEndpoint(location.getLatitude(), location.getLongitude());
           }
         }
       }
@@ -70,9 +79,34 @@ public class LocationUpdatesService extends Service {
       public void onSuccess(Location location) {
         if (location != null) {
           updateNotification("[" + location.getLatitude() + ", " + location.getLongitude() + "]");
+          callEndpoint(location.getLatitude(), location.getLongitude());
         }
       }
     });
+  }
+
+  private void callEndpoint(double lat, double lng) {
+    RequestQueue queue = Volley.newRequestQueue(this);
+    String url = BuildConfig.endpoint + "/logfromandroid/" + lat + "/" + lng;
+    JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.POST, url, null,
+        new Response.Listener<JSONObject>() {
+          @Override
+          public void onResponse(JSONObject response) {
+            Log.i(TAG, response.toString());
+          }
+        },
+        new Response.ErrorListener() {
+          @Override
+          public void onErrorResponse(VolleyError error) {
+            Log.i(TAG, error.toString());
+          }
+        });
+    jsonObjectRequest.setRetryPolicy(new DefaultRetryPolicy(
+        30000,
+        DefaultRetryPolicy.DEFAULT_MAX_RETRIES,
+        DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
+
+    queue.add(jsonObjectRequest);
   }
 
   @Override
@@ -132,7 +166,7 @@ public class LocationUpdatesService extends Service {
             stopSelf();
           }
         },
-        1000 * 10);
+        1000 * 60 * 5);
 
     // interval
 //    new Timer().scheduleAtFixedRate(new TimerTask() {
