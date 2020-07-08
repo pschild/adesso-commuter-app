@@ -6,7 +6,6 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.SystemClock;
 import android.util.Log;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -30,18 +29,28 @@ public class MainActivity extends AppCompatActivity {
 
     alarmMgr = (AlarmManager) this.getSystemService(Context.ALARM_SERVICE);
 
-    // when
-    Calendar calendar = Calendar.getInstance();
-    calendar.setTimeInMillis(System.currentTimeMillis());
-    calendar.set(Calendar.HOUR_OF_DAY, 6);
-    calendar.set(Calendar.MINUTE, 30);
-
     // what
     Intent intent = new Intent(this, AlarmReceiver.class);
-    alarmIntent = PendingIntent.getBroadcast(this, 0, intent, 0);
+    alarmIntent = PendingIntent.getBroadcast(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+
+    // when
+    Calendar calendar = Calendar.getInstance();
+    calendar.set(Calendar.HOUR_OF_DAY, 9);
+    calendar.set(Calendar.MINUTE, 12);
+    calendar.set(Calendar.SECOND, 0);
 
     // schedule!
-    alarmMgr.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), alarmIntent);
+    // trigger at datetime
+//    alarmMgr.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), alarmIntent);
+
+    // trigger each day at datetime
+    if (calendar.getTimeInMillis() < System.currentTimeMillis()) {
+      alarmMgr.setRepeating(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis() + AlarmManager.INTERVAL_DAY, AlarmManager.INTERVAL_DAY, alarmIntent);
+    } else {
+      alarmMgr.setRepeating(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), AlarmManager.INTERVAL_DAY, alarmIntent);
+    }
+
+    // trigger x seconds after start
 //    alarmMgr.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME,SystemClock.elapsedRealtime() + 1000 * 5, alarmIntent);
   }
 

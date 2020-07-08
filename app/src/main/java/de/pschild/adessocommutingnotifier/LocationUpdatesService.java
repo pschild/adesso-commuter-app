@@ -132,7 +132,7 @@ public class LocationUpdatesService extends Service {
             stopSelf();
           }
         },
-        1000 * 60);
+        1000 * 10);
 
     // interval
 //    new Timer().scheduleAtFixedRate(new TimerTask() {
