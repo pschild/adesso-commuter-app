@@ -5,7 +5,12 @@ import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
+import android.text.format.DateFormat;
 import android.util.Log;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -14,9 +19,6 @@ import java.util.Calendar;
 public class MainActivity extends AppCompatActivity {
 
   private static final String TAG = MainActivity.class.getSimpleName();
-
-  private AlarmManager alarmMgr;
-  private PendingIntent alarmIntent;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -27,34 +29,39 @@ public class MainActivity extends AppCompatActivity {
 
     requestPermissions();
 
-    alarmMgr = (AlarmManager) this.getSystemService(Context.ALARM_SERVICE);
-
-    // what
-    Intent intent = new Intent(this, AlarmReceiver.class);
-    alarmIntent = PendingIntent.getBroadcast(this, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
-
-    // when
-    Calendar calendar = Calendar.getInstance();
-    calendar.set(Calendar.HOUR_OF_DAY, 16);
-    calendar.set(Calendar.MINUTE, 30);
-    calendar.set(Calendar.SECOND, 0);
-
-    // schedule!
-    // trigger at datetime
-//    alarmMgr.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), alarmIntent);
-
-    // trigger each day at datetime
-    if (calendar.getTimeInMillis() < System.currentTimeMillis()) {
-      alarmMgr.setRepeating(AlarmManager.RTC_WAKEUP,
-          calendar.getTimeInMillis() + AlarmManager.INTERVAL_DAY, AlarmManager.INTERVAL_DAY,
-          alarmIntent);
-    } else {
-      alarmMgr.setRepeating(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(),
-          AlarmManager.INTERVAL_DAY, alarmIntent);
+    // unsure whether this is necessary.
+    if (!isIgnoringBatteryOptimizations(this)) {
+      Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+      intent.setData(Uri.parse("package:" + getPackageName()));
+      startActivity(intent);
     }
 
-    // trigger x seconds after start
-//    alarmMgr.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME,SystemClock.elapsedRealtime() + 1000 * 5, alarmIntent);
+    // TODO: remove code duplication
+    Calendar calendar = Calendar.getInstance();
+    if (calendar.get(Calendar.HOUR_OF_DAY) < 12) {
+      // in the morning, schedule next alarm for 15:30
+      calendar.set(Calendar.HOUR_OF_DAY, 15);
+      calendar.set(Calendar.MINUTE, 0);
+      // in the afternoon, schedule next alarm for 05:30
+    } else {
+      calendar.set(Calendar.HOUR_OF_DAY, 5);
+      calendar.set(Calendar.MINUTE, 30);
+    }
+    calendar.set(Calendar.SECOND, 0);
+
+    long start = calendar.getTimeInMillis();
+    if (calendar.before(Calendar.getInstance())) {
+      start = start + AlarmManager.INTERVAL_DAY;
+    }
+
+    Calendar cal = Calendar.getInstance();
+    cal.setTimeInMillis(start);
+    Logger.log(this, "MainActivity.scheduleNextAlarm for " + DateFormat.format("yyyy-MM-dd HH:mm:ss", cal).toString());
+
+    Intent alarmIntent = new Intent(this, AlarmReceiver.class);
+    PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 42, alarmIntent, PendingIntent.FLAG_CANCEL_CURRENT);
+    AlarmManager am = (AlarmManager) this.getSystemService(Context.ALARM_SERVICE);
+    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, start, pendingIntent);
   }
 
   private void requestPermissions() {
@@ -63,6 +70,14 @@ public class MainActivity extends AppCompatActivity {
         new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
         34 // Used in checking for runtime permissions.
     );
+  }
+
+  private boolean isIgnoringBatteryOptimizations(Context context) {
+    PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      return powerManager.isIgnoringBatteryOptimizations(context.getPackageName());
+    }
+    return true;
   }
 
   @Override
