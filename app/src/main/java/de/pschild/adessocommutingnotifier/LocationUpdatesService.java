@@ -98,10 +98,10 @@ public class LocationUpdatesService extends Service {
 
     // TODO: set title, icon, etc.
     return new NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle("Foreground Service")
+        .setContentTitle("Pendel-Tracker aktiv")
         .setContentText(text)
 //        .setOngoing(true)
-        .setSmallIcon(R.drawable.ic_launcher_background)
+        .setSmallIcon(R.drawable.baseline_person_pin_circle_white_48)
         .setContentIntent(pendingIntent)
         .build();
   }
@@ -127,12 +127,12 @@ public class LocationUpdatesService extends Service {
         }
         for (Location location : locationResult.getLocations()) {
           if (location != null) {
-            long runningFor = (Calendar.getInstance().getTimeInMillis() - mServiceStartTime);
-            if (runningFor >= SERVICE_LIFETIME) {
+            if (shouldStop(location)) {
               stopService();
               return;
             }
-            updateNotification((runningFor / 1000) + "s, [" + location.getLatitude() + ", " + location.getLongitude() + "]");
+            long runningFor = (Calendar.getInstance().getTimeInMillis() - mServiceStartTime) / 1000;
+            updateNotification(runningFor + "s, [" + location.getLatitude() + ", " + location.getLongitude() + "]");
             callEndpoint(location.getLatitude(), location.getLongitude());
             Logger.log(getApplicationContext(), "Got new location: [" + location.getLatitude() + ", " + location.getLongitude() + "]");
           }
@@ -170,6 +170,7 @@ public class LocationUpdatesService extends Service {
     SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
     String formattedDate = simpleDateFormat.format(c);
     Log.d(TAG, "callEndpoint " + lat + ", " + lng + " @ " + formattedDate);
+    Logger.log(getApplicationContext(), "Called Endpoint: [" + lat + ", " + lng + "]");
 
     RequestQueue queue = Volley.newRequestQueue(this);
     String url = BuildConfig.endpoint + "/logfromandroid/" + lat + "/" + lng;
@@ -178,12 +179,14 @@ public class LocationUpdatesService extends Service {
           @Override
           public void onResponse(JSONObject response) {
             Log.i(TAG, response.toString());
+            Logger.log(getApplicationContext(), "Success!" + response.toString());
           }
         },
         new Response.ErrorListener() {
           @Override
           public void onErrorResponse(VolleyError error) {
             Log.i(TAG, error.toString());
+            Logger.log(getApplicationContext(), "Error! " + error.toString());
           }
         });
     jsonObjectRequest.setRetryPolicy(new DefaultRetryPolicy(
@@ -192,6 +195,20 @@ public class LocationUpdatesService extends Service {
         DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
 
     queue.add(jsonObjectRequest);
+  }
+
+  private boolean shouldStop(Location location) {
+    long runningFor = (Calendar.getInstance().getTimeInMillis() - mServiceStartTime);
+
+    // test
+    float[] distance = new float[2];
+    Location.distanceBetween(location.getLatitude(), location.getLongitude(), 51.668189, 6.148282, distance);
+    Log.i(TAG, "Distance to home: " + distance[0]);
+
+    return runningFor >= SERVICE_LIFETIME
+//        || distance <= 100
+//        || targetReached()
+        ;
   }
 
   private void stopService() {

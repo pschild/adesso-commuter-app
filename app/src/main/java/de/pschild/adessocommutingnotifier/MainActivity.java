@@ -36,32 +36,13 @@ public class MainActivity extends AppCompatActivity {
       startActivity(intent);
     }
 
-    // TODO: remove code duplication
-    Calendar calendar = Calendar.getInstance();
-    if (calendar.get(Calendar.HOUR_OF_DAY) < 12) {
-      // in the morning, schedule next alarm for 15:30
-      calendar.set(Calendar.HOUR_OF_DAY, 15);
-      calendar.set(Calendar.MINUTE, 0);
-      // in the afternoon, schedule next alarm for 05:30
-    } else {
-      calendar.set(Calendar.HOUR_OF_DAY, 5);
-      calendar.set(Calendar.MINUTE, 30);
-    }
-    calendar.set(Calendar.SECOND, 0);
-
-    long start = calendar.getTimeInMillis();
-    if (calendar.before(Calendar.getInstance())) {
-      start = start + AlarmManager.INTERVAL_DAY;
-    }
-
-    Calendar cal = Calendar.getInstance();
-    cal.setTimeInMillis(start);
-    Logger.log(this, "MainActivity.scheduleNextAlarm for " + DateFormat.format("yyyy-MM-dd HH:mm:ss", cal).toString());
+    Calendar nextAlarm = Scheduler.calculateNextAlarm();
+    Logger.log(this, "MainActivity.scheduleNextAlarm for " + DateFormat.format("yyyy-MM-dd HH:mm:ss", nextAlarm).toString());
 
     Intent alarmIntent = new Intent(this, AlarmReceiver.class);
     PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 42, alarmIntent, PendingIntent.FLAG_CANCEL_CURRENT);
     AlarmManager am = (AlarmManager) this.getSystemService(Context.ALARM_SERVICE);
-    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, start, pendingIntent);
+    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextAlarm.getTimeInMillis(), pendingIntent);
   }
 
   private void requestPermissions() {
