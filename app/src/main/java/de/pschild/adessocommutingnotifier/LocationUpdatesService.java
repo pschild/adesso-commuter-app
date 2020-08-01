@@ -49,6 +49,7 @@ public class LocationUpdatesService extends Service {
   @Override
   public void onCreate() {
     Log.d(TAG, "LocationUpdatesService.onCreate");
+    Logger.log(getApplicationContext(), "LocationUpdatesService.onCreate");
     super.onCreate();
 
     mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);

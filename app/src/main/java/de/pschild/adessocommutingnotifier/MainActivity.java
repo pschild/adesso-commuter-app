@@ -48,7 +48,11 @@ public class MainActivity extends AppCompatActivity {
   private void requestPermissions() {
     ActivityCompat.requestPermissions(
         MainActivity.this,
-        new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+        new String[]{
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
+        },
         34 // Used in checking for runtime permissions.
     );
   }
