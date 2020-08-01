@@ -10,6 +10,7 @@ import android.content.Intent;
 import android.location.Location;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -39,10 +40,11 @@ public class LocationUpdatesService extends Service {
   private static final int NOTIFICATION_ID = 12345678;
 
   private static final int SERVICE_LIFETIME = 1000 * 60 * 60;
-  private static final int LOCATION_INTERVAL = 1000 * 60 * 2;
-  private static final int LOCATION_FASTEST_INTERVAL = 1000 * 60 * 2;
+  private static final int LOCATION_INTERVAL = 1000 * 60 * 5;
+  private static final int LOCATION_FASTEST_INTERVAL = 1000 * 60 * 5;
   private long mServiceStartTime = 0;
 
+  private PowerManager mPowerManager;
   private FusedLocationProviderClient mFusedLocationClient;
   private LocationCallback mLocationCallback;
 
@@ -53,6 +55,7 @@ public class LocationUpdatesService extends Service {
     super.onCreate();
 
     mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+    mPowerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
 
     getLastLocation();
     createLocationRequest();
@@ -66,6 +69,11 @@ public class LocationUpdatesService extends Service {
     mServiceStartTime = Calendar.getInstance().getTimeInMillis();
     createNotificationChannel();
     startForeground(NOTIFICATION_ID, this.buildNotification("waiting for 1st location..."));
+
+    Logger.log(getApplicationContext(), "PowerManager info ["
+        + "isPowerSaveMode=" + mPowerManager.isPowerSaveMode() + ","
+        + "isDeviceIdleMode=" + mPowerManager.isDeviceIdleMode() + ","
+        + "]");
 
     return START_NOT_STICKY;
   }
@@ -214,6 +222,11 @@ public class LocationUpdatesService extends Service {
 
   private void stopService() {
     Logger.log(getApplicationContext(), "Service is about to stop...");
+    Logger.log(getApplicationContext(), "PowerManager info ["
+        + "isPowerSaveMode=" + mPowerManager.isPowerSaveMode() + ","
+        + "isDeviceIdleMode=" + mPowerManager.isDeviceIdleMode() + ","
+        + "]");
+
     // Important: use addOnSuccessListener() to avoid an additional location update after the service has been stopped!
     // This caused the notification to re-appear.
     removeLocationRequest().addOnSuccessListener(new OnSuccessListener<Void>() {
