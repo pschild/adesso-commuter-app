@@ -34,6 +34,23 @@
       android:name=".AlarmReceiver"
       android:enabled="true"/>
 
+    <!--<receiver android:name=".jobscheduler.MyStartServiceReceiver" >
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+      </intent-filter>
+    </receiver>
+
+    <service
+      android:name=".jobscheduler.LocalWordService"
+      android:label="Word service" >
+    </service>
+
+    <service
+      android:name=".jobscheduler.TestJobService"
+      android:label="Word service"
+      android:permission="android.permission.BIND_JOB_SERVICE" >
+    </service>-->
+
     <service
       android:name=".LocationUpdatesService"
       android:enabled="true"
