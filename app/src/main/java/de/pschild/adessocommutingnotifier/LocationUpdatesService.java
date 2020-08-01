@@ -10,6 +10,8 @@ import android.content.Intent;
 import android.location.Location;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.PowerManager;
+import android.os.PowerManager.WakeLock;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -39,12 +41,14 @@ public class LocationUpdatesService extends Service {
   private static final int NOTIFICATION_ID = 12345678;
 
   private static final int SERVICE_LIFETIME = 1000 * 60 * 60;
-  private static final int LOCATION_INTERVAL = 1000 * 60 * 2;
-  private static final int LOCATION_FASTEST_INTERVAL = 1000 * 60 * 2;
+  private static final int LOCATION_INTERVAL = 1000 * 60 * 5;
+  private static final int LOCATION_FASTEST_INTERVAL = 1000 * 60 * 5;
   private long mServiceStartTime = 0;
 
   private FusedLocationProviderClient mFusedLocationClient;
   private LocationCallback mLocationCallback;
+
+  private WakeLock mWakeLock;
 
   @Override
   public void onCreate() {
@@ -67,11 +71,31 @@ public class LocationUpdatesService extends Service {
     createNotificationChannel();
     startForeground(NOTIFICATION_ID, this.buildNotification("waiting for 1st location..."));
 
+    /*
+     * FULL_WAKE_LOCK: This constant was deprecated in API level 17. Most applications should use WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON instead
+     * PARTIAL_WAKE_LOCK: Wake lock level: Ensures that the CPU is running; the screen and keyboard backlight will be allowed to go off.
+     * LOCATION_MODE_NO_CHANGE: Either the location providers shouldn't be affected by battery saver, or battery saver is off.
+     */
+    Logger.log(getApplicationContext(), "Acquiring wakelock...");
+    int wakeLockLevelAndFlags = PowerManager.LOCATION_MODE_NO_CHANGE | PowerManager.PARTIAL_WAKE_LOCK;
+    PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+    mWakeLock = pm.newWakeLock(wakeLockLevelAndFlags, "pschild:wakelockdebug");
+    mWakeLock.acquire();
+    Logger.log(getApplicationContext(), "WakeLock info ["
+        + "isHeld=" + mWakeLock.isHeld() + ","
+        + "getLocationPowerSaveMode=" + pm.getLocationPowerSaveMode() + ","
+        + "isPowerSaveMode=" + pm.isPowerSaveMode() + ","
+        + "isDeviceIdleMode=" + pm.isDeviceIdleMode() + ","
+        + "isInteractive=" + pm.isInteractive() + ","
+        + "isIgnoringBatteryOptimizations=" + pm.isIgnoringBatteryOptimizations("de.pschild.adessocommutingnotifier") + ","
+        + "]");
+
     return START_NOT_STICKY;
   }
 
   @Override
   public void onDestroy() {
+    mWakeLock.release();
     super.onDestroy();
   }
 
@@ -222,6 +246,17 @@ public class LocationUpdatesService extends Service {
         Logger.log(getApplicationContext(), "Location request removed successfully");
         stopForeground(true);
         stopSelf();
+        mWakeLock.release();
+        Logger.log(getApplicationContext(), "Wakelock released!");
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        Logger.log(getApplicationContext(), "WakeLock info ["
+            + "isHeld=" + mWakeLock.isHeld() + ","
+            + "getLocationPowerSaveMode=" + pm.getLocationPowerSaveMode() + ","
+            + "isPowerSaveMode=" + pm.isPowerSaveMode() + ","
+            + "isDeviceIdleMode=" + pm.isDeviceIdleMode() + ","
+            + "isInteractive=" + pm.isInteractive() + ","
+            + "isIgnoringBatteryOptimizations=" + pm.isIgnoringBatteryOptimizations("de.pschild.adessocommutingnotifier") + ","
+            + "]");
         Logger.log(getApplicationContext(), "Service stopped!");
       }
     });
