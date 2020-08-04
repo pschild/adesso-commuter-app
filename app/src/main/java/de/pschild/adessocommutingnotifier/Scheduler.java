@@ -1,7 +1,10 @@
 package de.pschild.adessocommutingnotifier;
 
 import android.app.AlarmManager;
+import java.time.LocalTime;
+import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Comparator;
 
 public class Scheduler {
 
@@ -11,24 +14,31 @@ public class Scheduler {
 //      return null;
 //    }
 
+    String[] triggerTimes = getTriggerTimes();
+    Arrays.sort(triggerTimes, Comparator.comparing(LocalTime::parse));
     Calendar now = now();
-    Calendar nextAlarm = Calendar.getInstance();
+    final int nowHour = now.get(Calendar.HOUR_OF_DAY);
+    final int nowMinute = now.get(Calendar.MINUTE);
 
-    final int hourOfDay = now.get(Calendar.HOUR_OF_DAY);
-    final int minute = now.get(Calendar.MINUTE);
-    if (hourOfDay < 2 || hourOfDay >= 15) {
-      // if alarm appears before 2:00 of after 15:00, schedule next alarm for 2:00
-      nextAlarm.set(Calendar.HOUR_OF_DAY, 2);
-      nextAlarm.set(Calendar.MINUTE, 0);
-    } else if (hourOfDay < 5 || (hourOfDay == 5 && minute < 30)) {
-      // else if alarm appears before 5:30, schedule next alarm for 5:30
-      nextAlarm.set(Calendar.HOUR_OF_DAY, 5);
-      nextAlarm.set(Calendar.MINUTE, 30);
-    } else {
-      // else, schedule next alarm for 15:00
-      nextAlarm.set(Calendar.HOUR_OF_DAY, 15);
-      nextAlarm.set(Calendar.MINUTE, 0);
+    String candidate = null;
+    for (String time : triggerTimes) {
+      String[] timeParts = time.split(":");
+      int timeHour = Integer.parseInt(timeParts[0]);
+      int timeMinute = Integer.parseInt(timeParts[1]);
+      if (nowHour < timeHour || (nowHour == timeHour && nowMinute < timeMinute)) {
+        candidate = time;
+        break;
+      }
     }
+
+    if (candidate == null) {
+      candidate = triggerTimes[0];
+    }
+
+    String[] candidateParts = candidate.split(":");
+    Calendar nextAlarm = Calendar.getInstance();
+    nextAlarm.set(Calendar.HOUR_OF_DAY, Integer.parseInt(candidateParts[0]));
+    nextAlarm.set(Calendar.MINUTE, Integer.parseInt(candidateParts[1]));
     nextAlarm.set(Calendar.SECOND, 0);
     nextAlarm.set(Calendar.MILLISECOND, 0);
 
@@ -38,6 +48,11 @@ public class Scheduler {
     }
     nextAlarm.setTimeInMillis(startTime);
     return nextAlarm;
+  }
+
+  public static String[] getTriggerTimes() {
+    // format MUST be HH:mm (incl. leading zero) - order of entries does NOT matter
+    return new String[]{"05:30", "15:00"};
   }
 
   public static Calendar now() {
