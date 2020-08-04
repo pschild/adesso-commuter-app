@@ -15,7 +15,6 @@ public class AlarmReceiver extends BroadcastReceiver {
 
   @Override
   public void onReceive(Context context, Intent intent) {
-    Log.i(TAG, "AlarmReceiver.onReceive");
     Logger.log(context, "AlarmReceiver.onReceive");
     this.scheduleNextAlarm(context);
     this.startLocationService(context);

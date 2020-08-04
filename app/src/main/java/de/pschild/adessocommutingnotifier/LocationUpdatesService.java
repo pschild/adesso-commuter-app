@@ -35,10 +35,14 @@ public class LocationUpdatesService extends Service {
   private static final String CHANNEL_ID = "ForegroundServiceChannel";
   private static final int NOTIFICATION_ID = 12345678;
 
-  private static final int SERVICE_LIFETIME = 1000 * 60 * 60;
+  private static final int SERVICE_LIFETIME = 1000 * 60 * 90;
   private static final int LOCATION_INTERVAL = 1000 * 60 * 5;
   private static final int LOCATION_FASTEST_INTERVAL = 1000 * 60 * 5;
   private long mServiceStartTime = 0;
+
+  private static final double[] HOME_COORDS = { 51.668189, 6.148282 };
+  private static final double[] WORK_COORDS = { 51.4557381, 7.0101814 };
+  private double[] mDestination = null;
 
   private PowerManager mPowerManager;
   private FusedLocationProviderClient mFusedLocationClient;
@@ -46,12 +50,19 @@ public class LocationUpdatesService extends Service {
 
   @Override
   public void onCreate() {
-    Log.d(TAG, "LocationUpdatesService.onCreate");
     Logger.log(getApplicationContext(), "LocationUpdatesService.onCreate");
     super.onCreate();
 
     mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
     mPowerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+
+    if (Calendar.getInstance().get(Calendar.HOUR_OF_DAY) < 12) {
+      mDestination = WORK_COORDS;
+      Logger.log(getApplicationContext(), "Destination is: WORK");
+    } else {
+      mDestination = HOME_COORDS;
+      Logger.log(getApplicationContext(), "Destination is: HOME");
+    }
 
     getLastLocation();
     createLocationRequest();
@@ -59,7 +70,6 @@ public class LocationUpdatesService extends Service {
 
   @Override
   public int onStartCommand(Intent intent, int flags, int startId) {
-    Log.d(TAG, "LocationUpdatesService.onStartCommand");
     Logger.log(getApplicationContext(), "LocationUpdatesService.onStartCommand");
 
     mServiceStartTime = Calendar.getInstance().getTimeInMillis();
@@ -138,9 +148,8 @@ public class LocationUpdatesService extends Service {
               return;
             }
             long runningFor = (Calendar.getInstance().getTimeInMillis() - mServiceStartTime) / 1000;
-            updateNotification(runningFor + "s, [" + location.getLatitude() + ", " + location.getLongitude() + "]");
+            updateNotification(runningFor / 60f + "m, [" + location.getLatitude() + ", " + location.getLongitude() + "]");
             callEndpoint(location.getLatitude(), location.getLongitude());
-            Logger.log(getApplicationContext(), "Got new location: [" + location.getLatitude() + ", " + location.getLongitude() + "]");
           }
         }
       }
@@ -149,11 +158,10 @@ public class LocationUpdatesService extends Service {
   }
 
   private Task<Void> removeLocationRequest() {
-    Log.d(TAG, "LocationUpdatesService.removeLocationRequest");
     try {
       return mFusedLocationClient.removeLocationUpdates(mLocationCallback);
     } catch (SecurityException unlikely) {
-      Log.e(TAG, "Lost location permission. Could not remove updates. " + unlikely);
+      Logger.log(getApplicationContext(), "Lost location permission. Could not remove updates. " + unlikely);
     }
     return null;
   }
@@ -169,34 +177,16 @@ public class LocationUpdatesService extends Service {
   }
 
   private void callEndpoint(double lat, double lng) {
-    Date c = Calendar.getInstance().getTime();
-    SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
-    String formattedDate = simpleDateFormat.format(c);
-    Log.d(TAG, "callEndpoint " + lat + ", " + lng + " @ " + formattedDate);
-    Logger.log(getApplicationContext(), "Called Endpoint: [" + lat + ", " + lng + "]");
+    Logger.log(getApplicationContext(), "Calling Endpoint with [" + lat + ", " + lng + "]...");
 
     RequestQueue queue = Volley.newRequestQueue(this);
-//    String url = BuildConfig.endpoint + "/logfromandroid/" + lat + "/" + lng;
-    double[] home = { 51.668189, 6.148282 };
-    double[] work = { 51.4557381, 7.0101814 };
-    String url;
-    if (Calendar.getInstance().get(Calendar.HOUR_OF_DAY) < 12) {
-      url = BuildConfig.endpoint + "/from/" + lat + "," + lng + "/to/" + work[0] + "," + work[1];
-    } else {
-      url = BuildConfig.endpoint + "/from/" + lat + "," + lng + "/to/" + home[0] + "," + home[1];
-    }
+    String url = BuildConfig.endpoint + "/from/" + lat + "," + lng + "/to/" + mDestination[0] + "," + mDestination[1];
     JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.GET, url, null,
-        response -> {
-          Log.i(TAG, response.toString());
-          Logger.log(getApplicationContext(), "Success!" + response.toString());
-        },
-        error -> {
-          Log.i(TAG, error.toString());
-          Logger.log(getApplicationContext(), "Error! " + error.toString());
-        });
+        response -> Logger.log(getApplicationContext(), "Success! " + response.toString()),
+        error -> Logger.log(getApplicationContext(), "Error! " + error.toString()));
     jsonObjectRequest.setRetryPolicy(new DefaultRetryPolicy(
         30000,
-        DefaultRetryPolicy.DEFAULT_MAX_RETRIES,
+        2,
         DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
 
     queue.add(jsonObjectRequest);
@@ -204,16 +194,8 @@ public class LocationUpdatesService extends Service {
 
   private boolean shouldStop(Location location) {
     long runningFor = (Calendar.getInstance().getTimeInMillis() - mServiceStartTime);
-
-    // test
-    float[] distance = new float[2];
-    Location.distanceBetween(location.getLatitude(), location.getLongitude(), 51.668189, 6.148282, distance);
-    Logger.log(getApplicationContext(), "Distance to home: " + distance[0]);
-
-    return runningFor >= SERVICE_LIFETIME
-//        || distance <= 100
-//        || targetReached()
-        ;
+    Logger.log(getApplicationContext(), "timeLimitReached=" + (runningFor >= SERVICE_LIFETIME) + ", targetReached=" + targetReached(location));
+    return runningFor >= SERVICE_LIFETIME || targetReached(location);
   }
 
   private void stopService() {
@@ -231,5 +213,12 @@ public class LocationUpdatesService extends Service {
       stopSelf();
       Logger.log(getApplicationContext(), "Service stopped!");
     });
+  }
+
+  private boolean targetReached(Location location) {
+    float[] distance = new float[2];
+    Location.distanceBetween(location.getLatitude(), location.getLongitude(), mDestination[0], mDestination[1], distance);
+    Logger.log(getApplicationContext(), "Distance to destination: " + distance[0]);
+    return distance[0] <= 500; // 500m
   }
 }
