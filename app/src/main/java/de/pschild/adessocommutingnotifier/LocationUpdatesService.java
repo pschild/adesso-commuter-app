@@ -17,8 +17,6 @@ import androidx.core.app.NotificationCompat;
 import com.android.volley.DefaultRetryPolicy;
 import com.android.volley.Request.Method;
 import com.android.volley.RequestQueue;
-import com.android.volley.Response;
-import com.android.volley.VolleyError;
 import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.Volley;
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -26,12 +24,10 @@ import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
-import org.json.JSONObject;
 
 public class LocationUpdatesService extends Service {
 
@@ -163,14 +159,11 @@ public class LocationUpdatesService extends Service {
   }
 
   private void getLastLocation() {
-    mFusedLocationClient.getLastLocation().addOnSuccessListener(new OnSuccessListener<Location>() {
-      @Override
-      public void onSuccess(Location location) {
-        if (location != null) {
-          Logger.log(getApplicationContext(), "Got initial location: [" + location.getLatitude() + ", " + location.getLongitude() + "]");
-          updateNotification("[" + location.getLatitude() + ", " + location.getLongitude() + "]");
-          callEndpoint(location.getLatitude(), location.getLongitude());
-        }
+    mFusedLocationClient.getLastLocation().addOnSuccessListener(location -> {
+      if (location != null) {
+        Logger.log(getApplicationContext(), "Got initial location: [" + location.getLatitude() + ", " + location.getLongitude() + "]");
+        updateNotification("[" + location.getLatitude() + ", " + location.getLongitude() + "]");
+        callEndpoint(location.getLatitude(), location.getLongitude());
       }
     });
   }
@@ -193,19 +186,13 @@ public class LocationUpdatesService extends Service {
       url = BuildConfig.endpoint + "/from/" + lat + "," + lng + "/to/" + home[0] + "," + home[1];
     }
     JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.GET, url, null,
-        new Response.Listener<JSONObject>() {
-          @Override
-          public void onResponse(JSONObject response) {
-            Log.i(TAG, response.toString());
-            Logger.log(getApplicationContext(), "Success!" + response.toString());
-          }
+        response -> {
+          Log.i(TAG, response.toString());
+          Logger.log(getApplicationContext(), "Success!" + response.toString());
         },
-        new Response.ErrorListener() {
-          @Override
-          public void onErrorResponse(VolleyError error) {
-            Log.i(TAG, error.toString());
-            Logger.log(getApplicationContext(), "Error! " + error.toString());
-          }
+        error -> {
+          Log.i(TAG, error.toString());
+          Logger.log(getApplicationContext(), "Error! " + error.toString());
         });
     jsonObjectRequest.setRetryPolicy(new DefaultRetryPolicy(
         30000,
@@ -238,14 +225,11 @@ public class LocationUpdatesService extends Service {
 
     // Important: use addOnSuccessListener() to avoid an additional location update after the service has been stopped!
     // This caused the notification to re-appear.
-    removeLocationRequest().addOnSuccessListener(new OnSuccessListener<Void>() {
-      @Override
-      public void onSuccess(Void aVoid) {
-        Logger.log(getApplicationContext(), "Location request removed successfully");
-        stopForeground(true);
-        stopSelf();
-        Logger.log(getApplicationContext(), "Service stopped!");
-      }
+    removeLocationRequest().addOnSuccessListener(aVoid -> {
+      Logger.log(getApplicationContext(), "Location request removed successfully");
+      stopForeground(true);
+      stopSelf();
+      Logger.log(getApplicationContext(), "Service stopped!");
     });
   }
 }
