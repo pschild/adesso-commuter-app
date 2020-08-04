@@ -127,6 +127,7 @@ public class LocationUpdatesService extends Service {
     locationRequest.setInterval(LOCATION_INTERVAL);
     locationRequest.setFastestInterval(LOCATION_FASTEST_INTERVAL);
     locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+    locationRequest.setSmallestDisplacement(1000L * 1); // 1.000m
 
     mLocationCallback = new LocationCallback() {
       @Override
@@ -182,8 +183,16 @@ public class LocationUpdatesService extends Service {
     Logger.log(getApplicationContext(), "Called Endpoint: [" + lat + ", " + lng + "]");
 
     RequestQueue queue = Volley.newRequestQueue(this);
-    String url = BuildConfig.endpoint + "/logfromandroid/" + lat + "/" + lng;
-    JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.POST, url, null,
+//    String url = BuildConfig.endpoint + "/logfromandroid/" + lat + "/" + lng;
+    double[] home = { 51.668189, 6.148282 };
+    double[] work = { 51.4557381, 7.0101814 };
+    String url;
+    if (Calendar.getInstance().get(Calendar.HOUR_OF_DAY) < 12) {
+      url = BuildConfig.endpoint + "/from/" + lat + "," + lng + "/to/" + work[0] + "," + work[1];
+    } else {
+      url = BuildConfig.endpoint + "/from/" + lat + "," + lng + "/to/" + home[0] + "," + home[1];
+    }
+    JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.GET, url, null,
         new Response.Listener<JSONObject>() {
           @Override
           public void onResponse(JSONObject response) {
@@ -212,7 +221,7 @@ public class LocationUpdatesService extends Service {
     // test
     float[] distance = new float[2];
     Location.distanceBetween(location.getLatitude(), location.getLongitude(), 51.668189, 6.148282, distance);
-    Log.i(TAG, "Distance to home: " + distance[0]);
+    Logger.log(getApplicationContext(), "Distance to home: " + distance[0]);
 
     return runningFor >= SERVICE_LIFETIME
 //        || distance <= 100
