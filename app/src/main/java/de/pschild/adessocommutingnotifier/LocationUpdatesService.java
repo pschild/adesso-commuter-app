@@ -1,5 +1,7 @@
 package de.pschild.adessocommutingnotifier;
 
+import static java.lang.Math.floor;
+
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -11,7 +13,6 @@ import android.location.Location;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
-import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import com.android.volley.DefaultRetryPolicy;
@@ -25,9 +26,7 @@ import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.Task;
-import java.text.SimpleDateFormat;
 import java.util.Calendar;
-import java.util.Date;
 
 public class LocationUpdatesService extends Service {
 
@@ -43,6 +42,8 @@ public class LocationUpdatesService extends Service {
   private static final double[] HOME_COORDS = { 51.668189, 6.148282 };
   private static final double[] WORK_COORDS = { 51.4557381, 7.0101814 };
   private double[] mDestination = null;
+
+  private Location mLastLocation = null;
 
   private PowerManager mPowerManager;
   private FusedLocationProviderClient mFusedLocationClient;
@@ -133,7 +134,7 @@ public class LocationUpdatesService extends Service {
     locationRequest.setInterval(LOCATION_INTERVAL);
     locationRequest.setFastestInterval(LOCATION_FASTEST_INTERVAL);
     locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-    locationRequest.setSmallestDisplacement(1000L * 1); // 1.000m
+//    locationRequest.setSmallestDisplacement(1000L * 1); // 1.000m
 
     mLocationCallback = new LocationCallback() {
       @Override
@@ -141,15 +142,24 @@ public class LocationUpdatesService extends Service {
         if (locationResult == null) {
           return;
         }
-        for (Location location : locationResult.getLocations()) {
-          if (location != null) {
-            if (shouldStop(location)) {
+        for (Location currentLocation : locationResult.getLocations()) {
+          if (currentLocation != null) {
+            if (shouldStop(currentLocation)) {
               stopService();
               return;
             }
+
             long runningFor = (Calendar.getInstance().getTimeInMillis() - mServiceStartTime) / 1000;
-            updateNotification(runningFor / 60f + "m, [" + location.getLatitude() + ", " + location.getLongitude() + "]");
-            callEndpoint(location.getLatitude(), location.getLongitude());
+            updateNotification(floor(runningFor / 60f) + "m, [" + currentLocation.getLatitude() + ", " + currentLocation.getLongitude() + "]");
+
+            // buffer: when distance is less than 1km, don't make request
+            if (mLastLocation == null || getDistance(currentLocation, mLastLocation) >= 200) { // 200m
+              Logger.log(getApplicationContext(), "Making request, as distance is " + getDistance(currentLocation, mLastLocation) + "m");
+              callEndpoint(currentLocation.getLatitude(), currentLocation.getLongitude());
+            } else {
+              Logger.log(getApplicationContext(), "NOT making request, as distance is only " + getDistance(currentLocation, mLastLocation) + "m");
+            }
+            mLastLocation = currentLocation;
           }
         }
       }
@@ -169,6 +179,7 @@ public class LocationUpdatesService extends Service {
   private void getLastLocation() {
     mFusedLocationClient.getLastLocation().addOnSuccessListener(location -> {
       if (location != null) {
+        mLastLocation = location;
         Logger.log(getApplicationContext(), "Got initial location: [" + location.getLatitude() + ", " + location.getLongitude() + "]");
         updateNotification("[" + location.getLatitude() + ", " + location.getLongitude() + "]");
         callEndpoint(location.getLatitude(), location.getLongitude());
@@ -192,10 +203,11 @@ public class LocationUpdatesService extends Service {
     queue.add(jsonObjectRequest);
   }
 
-  private boolean shouldStop(Location location) {
+  private boolean shouldStop(Location currentLocation) {
     long runningFor = (Calendar.getInstance().getTimeInMillis() - mServiceStartTime);
-    Logger.log(getApplicationContext(), "timeLimitReached=" + (runningFor >= SERVICE_LIFETIME) + ", targetReached=" + targetReached(location));
-    return runningFor >= SERVICE_LIFETIME || targetReached(location);
+    final boolean targetReached = targetReached(currentLocation);
+    Logger.log(getApplicationContext(), "timeLimitReached=" + (runningFor >= SERVICE_LIFETIME) + ", targetReached=" + targetReached);
+    return runningFor >= SERVICE_LIFETIME || targetReached;
   }
 
   private void stopService() {
@@ -215,10 +227,18 @@ public class LocationUpdatesService extends Service {
     });
   }
 
-  private boolean targetReached(Location location) {
+  private boolean targetReached(Location currentLocation) {
+    Location targetLocation = new Location("");
+    targetLocation.setLatitude(mDestination[0]);
+    targetLocation.setLongitude(mDestination[1]);
+    float distanceToTarget = getDistance(currentLocation, targetLocation);
+    Logger.log(getApplicationContext(), "Distance to destination: " + distanceToTarget);
+    return distanceToTarget <= 500; // 500m
+  }
+
+  private float getDistance(Location start, Location end) {
     float[] distance = new float[2];
-    Location.distanceBetween(location.getLatitude(), location.getLongitude(), mDestination[0], mDestination[1], distance);
-    Logger.log(getApplicationContext(), "Distance to destination: " + distance[0]);
-    return distance[0] <= 500; // 500m
+    Location.distanceBetween(start.getLatitude(), start.getLongitude(), end.getLatitude(), end.getLongitude(), distance);
+    return distance[0];
   }
 }
