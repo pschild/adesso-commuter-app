@@ -30,17 +30,23 @@ import java.util.Calendar;
 
 public class LocationUpdatesService extends Service {
 
-  private static final String TAG = LocationUpdatesService.class.getSimpleName();
   private static final String CHANNEL_ID = "ForegroundServiceChannel";
   private static final int NOTIFICATION_ID = 12345678;
 
   private static final int SERVICE_LIFETIME = 1000 * 60 * 90;
+  private static final int COMMUTING_MAX_DURATION = 1000 * 60 * 90;
   private static final int LOCATION_INTERVAL = 1000 * 60 * 5;
   private static final int LOCATION_FASTEST_INTERVAL = 1000 * 60 * 5;
+
   private long mServiceStartTime = 0;
+
+  private boolean mIsCommuting = false;
+  private long mCommutingStartTime = 0;
 
   private static final double[] HOME_COORDS = { 51.668189, 6.148282 };
   private static final double[] WORK_COORDS = { 51.4557381, 7.0101814 };
+  private static final int MIN_MOVEMENT_FOR_REQUEST = 500; // meter
+  private static final int MIN_DISTANCE_TO_TARGET = 500; // meter
   private double[] mDestination = null;
 
   private Location mLastLocation = null;
@@ -57,6 +63,7 @@ public class LocationUpdatesService extends Service {
     mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
     mPowerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
 
+    // TODO: set destination based on current location when mIsCommuting turns true
     if (Calendar.getInstance().get(Calendar.HOUR_OF_DAY) < 12) {
       mDestination = WORK_COORDS;
       Logger.log(getApplicationContext(), "Destination is: WORK");
@@ -65,7 +72,6 @@ public class LocationUpdatesService extends Service {
       Logger.log(getApplicationContext(), "Destination is: HOME");
     }
 
-    getLastLocation();
     createLocationRequest();
   }
 
@@ -132,6 +138,7 @@ public class LocationUpdatesService extends Service {
   private void createLocationRequest() {
     LocationRequest locationRequest = LocationRequest.create();
     locationRequest.setInterval(LOCATION_INTERVAL);
+    // TODO: locationRequest.setInterval(1min); if !mIsCommuting
     locationRequest.setFastestInterval(LOCATION_FASTEST_INTERVAL);
     locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
 //    locationRequest.setSmallestDisplacement(1000L * 1); // 1.000m
@@ -150,15 +157,32 @@ public class LocationUpdatesService extends Service {
             }
 
             long runningFor = (Calendar.getInstance().getTimeInMillis() - mServiceStartTime) / 1000;
-            updateNotification(floor(runningFor / 60f) + "m, [" + currentLocation.getLatitude() + ", " + currentLocation.getLongitude() + "]");
+            long commutingFor = (Calendar.getInstance().getTimeInMillis() - mCommutingStartTime) / 1000;
+            updateNotification(""
+                + "Svc: " + floor(runningFor / 60f) + "m, "
+                + "Com: " + (mIsCommuting ? floor(commutingFor / 60f) + "m" : "-") + " "
+                + "[" + currentLocation.getLatitude() + ", " + currentLocation.getLongitude() + "]");
 
-            // buffer: when distance is less than 1km, don't make request
-            if (mLastLocation == null || getDistance(currentLocation, mLastLocation) >= 200) { // 200m
+            if (mLastLocation == null) {
+              Logger.log(getApplicationContext(), "No last location... exiting!");
+              mLastLocation = currentLocation;
+              return;
+            }
+
+            // buffer: when last movement is less than specified, don't make request
+            if (getDistance(currentLocation, mLastLocation) >= MIN_MOVEMENT_FOR_REQUEST) {
+              if (!mIsCommuting) {
+                mIsCommuting = true;
+                mCommutingStartTime = Calendar.getInstance().getTimeInMillis();
+                // TODO: locationRequest.setInterval(5min); if mIsCommuting
+                Logger.log(getApplicationContext(), "Start commuting!");
+              }
               Logger.log(getApplicationContext(), "Making request, as distance is " + getDistance(currentLocation, mLastLocation) + "m");
               callEndpoint(currentLocation.getLatitude(), currentLocation.getLongitude());
             } else {
               Logger.log(getApplicationContext(), "NOT making request, as distance is only " + getDistance(currentLocation, mLastLocation) + "m");
             }
+
             mLastLocation = currentLocation;
           }
         }
@@ -174,17 +198,6 @@ public class LocationUpdatesService extends Service {
       Logger.log(getApplicationContext(), "Lost location permission. Could not remove updates. " + unlikely);
     }
     return null;
-  }
-
-  private void getLastLocation() {
-    mFusedLocationClient.getLastLocation().addOnSuccessListener(location -> {
-      if (location != null) {
-        mLastLocation = location;
-        Logger.log(getApplicationContext(), "Got initial location: [" + location.getLatitude() + ", " + location.getLongitude() + "]");
-        updateNotification("[" + location.getLatitude() + ", " + location.getLongitude() + "]");
-        callEndpoint(location.getLatitude(), location.getLongitude());
-      }
-    });
   }
 
   private void callEndpoint(double lat, double lng) {
@@ -204,10 +217,18 @@ public class LocationUpdatesService extends Service {
   }
 
   private boolean shouldStop(Location currentLocation) {
-    long runningFor = (Calendar.getInstance().getTimeInMillis() - mServiceStartTime);
+    long serviceRunningDuration = (Calendar.getInstance().getTimeInMillis() - mServiceStartTime);
+    long commutingDuration = (Calendar.getInstance().getTimeInMillis() - mCommutingStartTime);
     final boolean targetReached = targetReached(currentLocation);
-    Logger.log(getApplicationContext(), "timeLimitReached=" + (runningFor >= SERVICE_LIFETIME) + ", targetReached=" + targetReached);
-    return runningFor >= SERVICE_LIFETIME || targetReached;
+
+    Logger.log(getApplicationContext(), ""
+        + "isCommuting=" + mIsCommuting
+        + ", serviceTimeLimitReached=" + (!mIsCommuting && serviceRunningDuration >= SERVICE_LIFETIME)
+        + ", commutingTimeLimitReached=" + (mIsCommuting && commutingDuration >= COMMUTING_MAX_DURATION)
+        + ", targetReached=" + targetReached);
+    return targetReached
+        || (!mIsCommuting && serviceRunningDuration >= SERVICE_LIFETIME)
+        || (mIsCommuting && commutingDuration >= COMMUTING_MAX_DURATION);
   }
 
   private void stopService() {
@@ -216,6 +237,8 @@ public class LocationUpdatesService extends Service {
         + "isPowerSaveMode=" + mPowerManager.isPowerSaveMode() + ","
         + "isDeviceIdleMode=" + mPowerManager.isDeviceIdleMode() + ","
         + "]");
+
+    mIsCommuting = false;
 
     // Important: use addOnSuccessListener() to avoid an additional location update after the service has been stopped!
     // This caused the notification to re-appear.
@@ -233,7 +256,7 @@ public class LocationUpdatesService extends Service {
     targetLocation.setLongitude(mDestination[1]);
     float distanceToTarget = getDistance(currentLocation, targetLocation);
     Logger.log(getApplicationContext(), "Distance to destination: " + distanceToTarget);
-    return distanceToTarget <= 500; // 500m
+    return distanceToTarget <= MIN_DISTANCE_TO_TARGET;
   }
 
   private float getDistance(Location start, Location end) {
