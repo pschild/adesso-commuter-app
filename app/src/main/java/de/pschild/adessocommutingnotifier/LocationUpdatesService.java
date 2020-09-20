@@ -35,18 +35,21 @@ public class LocationUpdatesService extends Service {
 
   private static final int SERVICE_LIFETIME = 1000 * 60 * 90;
   private static final int COMMUTING_MAX_DURATION = 1000 * 60 * 90;
-  private static final int LOCATION_INTERVAL = 1000 * 60 * 5;
-  private static final int LOCATION_FASTEST_INTERVAL = 1000 * 60 * 5;
+  private static final int LOCATION_INTERVAL = 1000 * 60 * 1;
+  private static final int REQUEST_INTERVAL = 1000 * 60 * 5;
 
   private long mServiceStartTime = 0;
 
   private boolean mIsCommuting = false;
   private long mCommutingStartTime = 0;
 
+  private long mLastRequestTime = 0;
+
   private static final double[] HOME_COORDS = { 51.668189, 6.148282 };
   private static final double[] WORK_COORDS = { 51.4557381, 7.0101814 };
   private static final int MIN_MOVEMENT_FOR_REQUEST = 500; // meter
   private static final int MIN_DISTANCE_TO_TARGET = 500; // meter
+  private static final float MIN_SPEED_FOR_REQUEST = 5f;
   private double[] mDestination = null;
 
   private Location mLastLocation = null;
@@ -138,8 +141,7 @@ public class LocationUpdatesService extends Service {
   private void createLocationRequest() {
     LocationRequest locationRequest = LocationRequest.create();
     locationRequest.setInterval(LOCATION_INTERVAL);
-    // TODO: locationRequest.setInterval(1min); if !mIsCommuting
-    locationRequest.setFastestInterval(LOCATION_FASTEST_INTERVAL);
+    locationRequest.setFastestInterval(LOCATION_INTERVAL);
     locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
 //    locationRequest.setSmallestDisplacement(1000L * 1); // 1.000m
 
@@ -151,7 +153,17 @@ public class LocationUpdatesService extends Service {
         }
         for (Location currentLocation : locationResult.getLocations()) {
           if (currentLocation != null) {
+            Logger.log(getApplicationContext(), "accuracy=" + currentLocation.getAccuracy() + ", speed=" + currentLocation.getSpeed());
+
             if (shouldStop(currentLocation)) {
+              // call one last time (if commuting)
+              if (mIsCommuting) {
+                saveCoordinates(currentLocation.getLatitude(), currentLocation.getLongitude());
+                saveCommutingStatus(CommutingState.END);
+              } else {
+                saveCommutingStatus(CommutingState.CANCELLED);
+              }
+
               stopService();
               return;
             }
@@ -169,21 +181,26 @@ public class LocationUpdatesService extends Service {
               return;
             }
 
-            // buffer: when last movement is less than specified, don't make request
-            if (getDistance(currentLocation, mLastLocation) >= MIN_MOVEMENT_FOR_REQUEST) {
+            // buffer: make request only if last movement is more than specified and speed is greater than 0
+            if (getDistance(currentLocation, mLastLocation) >= MIN_MOVEMENT_FOR_REQUEST && currentLocation.getSpeed() >= MIN_SPEED_FOR_REQUEST) {
               if (!mIsCommuting) {
                 mIsCommuting = true;
                 mCommutingStartTime = Calendar.getInstance().getTimeInMillis();
-                // TODO: locationRequest.setInterval(5min); if mIsCommuting
                 Logger.log(getApplicationContext(), "Start commuting!");
+                saveCommutingStatus(CommutingState.START);
               }
-              Logger.log(getApplicationContext(), "Making request, as distance is " + getDistance(currentLocation, mLastLocation) + "m");
-              callEndpoint(currentLocation.getLatitude(), currentLocation.getLongitude());
-            } else {
-              Logger.log(getApplicationContext(), "NOT making request, as distance is only " + getDistance(currentLocation, mLastLocation) + "m");
-            }
 
-            mLastLocation = currentLocation;
+              if (shouldMakeRequest()) {
+                Logger.log(getApplicationContext(),"Making request, as distance is " + getDistance(currentLocation, mLastLocation)+ "m");
+                saveCoordinates(currentLocation.getLatitude(), currentLocation.getLongitude());
+                mLastRequestTime = Calendar.getInstance().getTimeInMillis();
+                mLastLocation = currentLocation;
+              } else {
+                Logger.log(getApplicationContext(), "Skipping request...");
+              }
+            } else {
+              Logger.log(getApplicationContext(), "NOT making request, as distance is only " + getDistance(currentLocation, mLastLocation) + "m or speed is " + currentLocation.getSpeed());
+            }
           }
         }
       }
@@ -200,11 +217,27 @@ public class LocationUpdatesService extends Service {
     return null;
   }
 
-  private void callEndpoint(double lat, double lng) {
-    Logger.log(getApplicationContext(), "Calling Endpoint with [" + lat + ", " + lng + "]...");
+  private void saveCoordinates(double lat, double lng) {
+    Logger.log(getApplicationContext(), "Calling Endpoint (saveCoordinates) with [" + lat + ", " + lng + "]...");
 
     RequestQueue queue = Volley.newRequestQueue(this);
     String url = BuildConfig.endpoint + "/from/" + lat + "," + lng + "/to/" + mDestination[0] + "," + mDestination[1];
+    JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.GET, url, null,
+        response -> Logger.log(getApplicationContext(), "Success! " + response.toString()),
+        error -> Logger.log(getApplicationContext(), "Error! " + error.toString()));
+    jsonObjectRequest.setRetryPolicy(new DefaultRetryPolicy(
+        30000,
+        2,
+        DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
+
+    queue.add(jsonObjectRequest);
+  }
+
+  private void saveCommutingStatus(CommutingState state) {
+    Logger.log(getApplicationContext(), "Calling Endpoint (saveCommutingStatus) with " + state.label + "...");
+
+    RequestQueue queue = Volley.newRequestQueue(this);
+    String url = BuildConfig.endpoint + "/commuting-state/" + state.label;
     JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.GET, url, null,
         response -> Logger.log(getApplicationContext(), "Success! " + response.toString()),
         error -> Logger.log(getApplicationContext(), "Error! " + error.toString()));
@@ -229,6 +262,11 @@ public class LocationUpdatesService extends Service {
     return targetReached
         || (!mIsCommuting && serviceRunningDuration >= SERVICE_LIFETIME)
         || (mIsCommuting && commutingDuration >= COMMUTING_MAX_DURATION);
+  }
+
+  private boolean shouldMakeRequest() {
+    long elapsedSecondsSinceLastRequest = (Calendar.getInstance().getTimeInMillis() - mLastRequestTime);
+    return elapsedSecondsSinceLastRequest >= REQUEST_INTERVAL;
   }
 
   private void stopService() {
