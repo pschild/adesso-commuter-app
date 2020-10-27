@@ -12,7 +12,7 @@ import android.content.Intent;
 import android.location.Location;
 import android.os.Build;
 import android.os.IBinder;
-import android.os.PowerManager;
+import android.util.Base64;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import com.android.volley.DefaultRetryPolicy;
@@ -27,6 +27,8 @@ import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.Task;
 import java.util.Calendar;
+import java.util.HashMap;
+import java.util.Map;
 
 public class LocationUpdatesService extends Service {
 
@@ -47,14 +49,13 @@ public class LocationUpdatesService extends Service {
 
   private static final double[] HOME_COORDS = { 51.668189, 6.148282 };
   private static final double[] WORK_COORDS = { 51.4557381, 7.0101814 };
-  private static final int MIN_MOVEMENT_FOR_REQUEST = 500; // meter
-  private static final int MIN_DISTANCE_TO_TARGET = 500; // meter
+  private static final int MIN_MOVEMENT_FOR_REQUEST = 200; // meter
+  private static final int MIN_DISTANCE_TO_TARGET = 200; // meter
   private static final float MIN_SPEED_FOR_REQUEST = 5f;
   private double[] mDestination = null;
 
   private Location mLastLocation = null;
 
-  private PowerManager mPowerManager;
   private FusedLocationProviderClient mFusedLocationClient;
   private LocationCallback mLocationCallback;
 
@@ -64,7 +65,6 @@ public class LocationUpdatesService extends Service {
     super.onCreate();
 
     mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-    mPowerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
 
     // TODO: set destination based on current location when mIsCommuting turns true
     if (Calendar.getInstance().get(Calendar.HOUR_OF_DAY) < 12) {
@@ -85,11 +85,6 @@ public class LocationUpdatesService extends Service {
     mServiceStartTime = Calendar.getInstance().getTimeInMillis();
     createNotificationChannel();
     startForeground(NOTIFICATION_ID, this.buildNotification("waiting for 1st location..."));
-
-    Logger.log(getApplicationContext(), "PowerManager info ["
-        + "isPowerSaveMode=" + mPowerManager.isPowerSaveMode() + ","
-        + "isDeviceIdleMode=" + mPowerManager.isDeviceIdleMode() + ","
-        + "]");
 
     return START_NOT_STICKY;
   }
@@ -143,7 +138,6 @@ public class LocationUpdatesService extends Service {
     locationRequest.setInterval(LOCATION_INTERVAL);
     locationRequest.setFastestInterval(LOCATION_INTERVAL);
     locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-//    locationRequest.setSmallestDisplacement(1000L * 1); // 1.000m
 
     mLocationCallback = new LocationCallback() {
       @Override
@@ -157,8 +151,9 @@ public class LocationUpdatesService extends Service {
 
             if (shouldStop(currentLocation)) {
               // call one last time (if commuting)
+              // TODO: send CANCELLED (not END) in case the timelimits are reached
               if (mIsCommuting) {
-                saveCoordinates(currentLocation.getLatitude(), currentLocation.getLongitude());
+//                saveCoordinates(currentLocation.getLatitude(), currentLocation.getLongitude());
                 saveCommutingStatus(CommutingState.END);
               } else {
                 saveCommutingStatus(CommutingState.CANCELLED);
@@ -181,12 +176,15 @@ public class LocationUpdatesService extends Service {
               return;
             }
 
-            // buffer: make request only if last movement is more than specified and speed is greater than 0
-            if (getDistance(currentLocation, mLastLocation) >= MIN_MOVEMENT_FOR_REQUEST && currentLocation.getSpeed() >= MIN_SPEED_FOR_REQUEST) {
+            // buffer: make request only if (last movement is more than specified and speed is greater than 0) or commuting is active
+            if (
+                (getDistance(currentLocation, mLastLocation) >= MIN_MOVEMENT_FOR_REQUEST && currentLocation.getSpeed() >= MIN_SPEED_FOR_REQUEST)
+                || mIsCommuting
+              ) {
               if (!mIsCommuting) {
                 mIsCommuting = true;
                 mCommutingStartTime = Calendar.getInstance().getTimeInMillis();
-                Logger.log(getApplicationContext(), "Start commuting!");
+                Logger.log(getApplicationContext(), "***** Start commuting! *****");
                 saveCommutingStatus(CommutingState.START);
               }
 
@@ -196,7 +194,7 @@ public class LocationUpdatesService extends Service {
                 mLastRequestTime = Calendar.getInstance().getTimeInMillis();
                 mLastLocation = currentLocation;
               } else {
-                Logger.log(getApplicationContext(), "Skipping request...");
+                Logger.log(getApplicationContext(), "Skipping request, as time limit reached");
               }
             } else {
               Logger.log(getApplicationContext(), "NOT making request, as distance is only " + getDistance(currentLocation, mLastLocation) + "m or speed is " + currentLocation.getSpeed());
@@ -240,7 +238,18 @@ public class LocationUpdatesService extends Service {
     String url = BuildConfig.endpoint + "/commuting-state/" + state.label;
     JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.GET, url, null,
         response -> Logger.log(getApplicationContext(), "Success! " + response.toString()),
-        error -> Logger.log(getApplicationContext(), "Error! " + error.toString()));
+        error -> Logger.log(getApplicationContext(), "Error! " + error.toString())) {
+
+      @Override
+      public Map<String, String> getHeaders() {
+        // build and put header for Basic Auth
+        HashMap<String, String> headers = new HashMap<>();
+        String credentials = BuildConfig.user + ":" + BuildConfig.password;
+        String auth = "Basic " + Base64.encodeToString(credentials.getBytes(), Base64.NO_WRAP);
+        headers.put("Authorization", auth);
+        return headers;
+      }
+    };
     jsonObjectRequest.setRetryPolicy(new DefaultRetryPolicy(
         30000,
         2,
@@ -271,10 +280,6 @@ public class LocationUpdatesService extends Service {
 
   private void stopService() {
     Logger.log(getApplicationContext(), "Service is about to stop...");
-    Logger.log(getApplicationContext(), "PowerManager info ["
-        + "isPowerSaveMode=" + mPowerManager.isPowerSaveMode() + ","
-        + "isDeviceIdleMode=" + mPowerManager.isDeviceIdleMode() + ","
-        + "]");
 
     mIsCommuting = false;
 
