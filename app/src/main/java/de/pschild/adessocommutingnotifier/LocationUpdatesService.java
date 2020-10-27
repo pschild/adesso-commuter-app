@@ -222,7 +222,18 @@ public class LocationUpdatesService extends Service {
     String url = BuildConfig.endpoint + "/from/" + lat + "," + lng + "/to/" + mDestination[0] + "," + mDestination[1];
     JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.GET, url, null,
         response -> Logger.log(getApplicationContext(), "Success! " + response.toString()),
-        error -> Logger.log(getApplicationContext(), "Error! " + error.toString()));
+        error -> Logger.log(getApplicationContext(), "Error! " + error.toString())) {
+
+      @Override
+      public Map<String, String> getHeaders() {
+        // build and put header for Basic Auth
+        HashMap<String, String> headers = new HashMap<>();
+        String credentials = BuildConfig.user + ":" + BuildConfig.password;
+        String auth = "Basic " + Base64.encodeToString(credentials.getBytes(), Base64.NO_WRAP);
+        headers.put("Authorization", auth);
+        return headers;
+      }
+    };
     jsonObjectRequest.setRetryPolicy(new DefaultRetryPolicy(
         30000,
         2,
