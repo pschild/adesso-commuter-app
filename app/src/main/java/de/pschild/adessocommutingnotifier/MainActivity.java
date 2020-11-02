@@ -17,8 +17,6 @@ import java.util.Calendar;
 
 public class MainActivity extends AppCompatActivity {
 
-  private static final String TAG = MainActivity.class.getSimpleName();
-
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
@@ -33,6 +31,7 @@ public class MainActivity extends AppCompatActivity {
       startActivity(intent);
     }
 
+    // TODO: <DUPLICATE_CODE>
     Calendar nextAlarm = Scheduler.calculateNextAlarm();
     Logger.log(this, "MainActivity.scheduleNextAlarm for " + DateFormat.format("yyyy-MM-dd HH:mm:ss", nextAlarm).toString());
 
@@ -40,6 +39,7 @@ public class MainActivity extends AppCompatActivity {
     PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 42, alarmIntent, PendingIntent.FLAG_CANCEL_CURRENT);
     AlarmManager am = (AlarmManager) this.getSystemService(Context.ALARM_SERVICE);
     am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextAlarm.getTimeInMillis(), pendingIntent);
+    // TODO: </DUPLICATE_CODE>
   }
 
   private void requestPermissions() {

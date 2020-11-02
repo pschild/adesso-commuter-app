@@ -220,6 +220,7 @@ public class LocationUpdatesService extends Service {
 
     RequestQueue queue = Volley.newRequestQueue(this);
     String url = BuildConfig.endpoint + "/from/" + lat + "," + lng + "/to/" + mDestination[0] + "," + mDestination[1];
+    // TODO: <DUPLICATE_CODE>
     JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.GET, url, null,
         response -> Logger.log(getApplicationContext(), "Success! " + response.toString()),
         error -> Logger.log(getApplicationContext(), "Error! " + error.toString())) {
@@ -240,6 +241,7 @@ public class LocationUpdatesService extends Service {
         DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
 
     queue.add(jsonObjectRequest);
+    // TODO: </DUPLICATE_CODE>
   }
 
   private void saveCommutingStatus(CommutingState state) {
@@ -247,6 +249,7 @@ public class LocationUpdatesService extends Service {
 
     RequestQueue queue = Volley.newRequestQueue(this);
     String url = BuildConfig.endpoint + "/commuting-state/" + state.label;
+    // TODO: <DUPLICATE_CODE>
     JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.GET, url, null,
         response -> Logger.log(getApplicationContext(), "Success! " + response.toString()),
         error -> Logger.log(getApplicationContext(), "Error! " + error.toString())) {
@@ -267,6 +270,7 @@ public class LocationUpdatesService extends Service {
         DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
 
     queue.add(jsonObjectRequest);
+    // TODO: </DUPLICATE_CODE>
   }
 
   private boolean shouldStop(Location currentLocation) {

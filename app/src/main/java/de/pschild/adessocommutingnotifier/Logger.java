@@ -11,8 +11,6 @@ import java.util.Calendar;
 
 public class Logger {
 
-  private static final String TAG = Logger.class.getSimpleName();
-
   public static BufferedWriter out;
 
   /**

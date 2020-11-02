@@ -3,6 +3,7 @@
   xmlns:tools="http://schemas.android.com/tools"
   package="de.pschild.adessocommutingnotifier">
 
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
   <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
@@ -33,6 +34,13 @@
     <receiver
       android:name=".AlarmReceiver"
       android:enabled="true"/>
+
+    <receiver
+      android:name=".BootReceiver">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED"/>
+      </intent-filter>
+    </receiver>
 
     <service
       android:name=".LocationUpdatesService"
