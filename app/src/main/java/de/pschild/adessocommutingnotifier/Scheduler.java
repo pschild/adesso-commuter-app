@@ -1,12 +1,26 @@
 package de.pschild.adessocommutingnotifier;
 
 import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.text.format.DateFormat;
 import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Comparator;
 
 public class Scheduler {
+
+  public static void schedule(Context context) {
+    Calendar nextAlarm = Scheduler.calculateNextAlarm();
+    Logger.log(context, "Set next alarm for " + DateFormat.format("yyyy-MM-dd HH:mm:ss", nextAlarm).toString());
+
+    Intent alarmIntent = new Intent(context, AlarmReceiver.class);
+    PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 42, alarmIntent, PendingIntent.FLAG_CANCEL_CURRENT);
+    AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextAlarm.getTimeInMillis(), pendingIntent);
+  }
 
   public static Calendar calculateNextAlarm() {
 //    if (isWeekend()) {

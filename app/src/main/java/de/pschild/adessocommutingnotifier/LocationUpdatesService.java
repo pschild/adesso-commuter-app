@@ -47,8 +47,8 @@ public class LocationUpdatesService extends Service {
 
   private long mLastRequestTime = 0;
 
-  private static final double[] HOME_COORDS = { 51.668189, 6.148282 };
-  private static final double[] WORK_COORDS = { 51.4557381, 7.0101814 };
+  private static final double[] HOME_COORDS = { 51.668189, 6.148282 }; // read from server? Cache?
+  private static final double[] WORK_COORDS = { 51.4557381, 7.0101814 }; // read from server? Cache?
   private static final int MIN_MOVEMENT_FOR_REQUEST = 200; // meter
   private static final int MIN_DISTANCE_TO_TARGET = 200; // meter
   private static final float MIN_SPEED_FOR_REQUEST = 5f;
@@ -220,28 +220,7 @@ public class LocationUpdatesService extends Service {
 
     RequestQueue queue = Volley.newRequestQueue(this);
     String url = BuildConfig.endpoint + "/from/" + lat + "," + lng + "/to/" + mDestination[0] + "," + mDestination[1];
-    // TODO: <DUPLICATE_CODE>
-    JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.GET, url, null,
-        response -> Logger.log(getApplicationContext(), "Success! " + response.toString()),
-        error -> Logger.log(getApplicationContext(), "Error! " + error.toString())) {
-
-      @Override
-      public Map<String, String> getHeaders() {
-        // build and put header for Basic Auth
-        HashMap<String, String> headers = new HashMap<>();
-        String credentials = BuildConfig.user + ":" + BuildConfig.password;
-        String auth = "Basic " + Base64.encodeToString(credentials.getBytes(), Base64.NO_WRAP);
-        headers.put("Authorization", auth);
-        return headers;
-      }
-    };
-    jsonObjectRequest.setRetryPolicy(new DefaultRetryPolicy(
-        30000,
-        2,
-        DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
-
-    queue.add(jsonObjectRequest);
-    // TODO: </DUPLICATE_CODE>
+    queue.add(buildGetRequest(url));
   }
 
   private void saveCommutingStatus(CommutingState state) {
@@ -249,28 +228,7 @@ public class LocationUpdatesService extends Service {
 
     RequestQueue queue = Volley.newRequestQueue(this);
     String url = BuildConfig.endpoint + "/commuting-state/" + state.label;
-    // TODO: <DUPLICATE_CODE>
-    JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.GET, url, null,
-        response -> Logger.log(getApplicationContext(), "Success! " + response.toString()),
-        error -> Logger.log(getApplicationContext(), "Error! " + error.toString())) {
-
-      @Override
-      public Map<String, String> getHeaders() {
-        // build and put header for Basic Auth
-        HashMap<String, String> headers = new HashMap<>();
-        String credentials = BuildConfig.user + ":" + BuildConfig.password;
-        String auth = "Basic " + Base64.encodeToString(credentials.getBytes(), Base64.NO_WRAP);
-        headers.put("Authorization", auth);
-        return headers;
-      }
-    };
-    jsonObjectRequest.setRetryPolicy(new DefaultRetryPolicy(
-        30000,
-        2,
-        DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
-
-    queue.add(jsonObjectRequest);
-    // TODO: </DUPLICATE_CODE>
+    queue.add(buildGetRequest(url));
   }
 
   private boolean shouldStop(Location currentLocation) {
@@ -321,5 +279,27 @@ public class LocationUpdatesService extends Service {
     float[] distance = new float[2];
     Location.distanceBetween(start.getLatitude(), start.getLongitude(), end.getLatitude(), end.getLongitude(), distance);
     return distance[0];
+  }
+
+  private JsonObjectRequest buildGetRequest(String url) {
+    JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.GET, url, null,
+        response -> Logger.log(getApplicationContext(), "Success! " + response.toString()),
+        error -> Logger.log(getApplicationContext(), "Error! " + error.toString())) {
+
+      @Override
+      public Map<String, String> getHeaders() {
+        // build and put header for Basic Auth
+        HashMap<String, String> headers = new HashMap<>();
+        String credentials = BuildConfig.user + ":" + BuildConfig.password;
+        String auth = "Basic " + Base64.encodeToString(credentials.getBytes(), Base64.NO_WRAP);
+        headers.put("Authorization", auth);
+        return headers;
+      }
+    };
+    jsonObjectRequest.setRetryPolicy(new DefaultRetryPolicy(
+        30000,
+        2,
+        DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
+    return jsonObjectRequest;
   }
 }

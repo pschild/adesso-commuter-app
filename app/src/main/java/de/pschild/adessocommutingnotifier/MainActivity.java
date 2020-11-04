@@ -1,8 +1,6 @@
 package de.pschild.adessocommutingnotifier;
 
 import android.Manifest;
-import android.app.AlarmManager;
-import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -10,10 +8,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
-import android.text.format.DateFormat;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
-import java.util.Calendar;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -31,15 +27,8 @@ public class MainActivity extends AppCompatActivity {
       startActivity(intent);
     }
 
-    // TODO: <DUPLICATE_CODE>
-    Calendar nextAlarm = Scheduler.calculateNextAlarm();
-    Logger.log(this, "MainActivity.scheduleNextAlarm for " + DateFormat.format("yyyy-MM-dd HH:mm:ss", nextAlarm).toString());
-
-    Intent alarmIntent = new Intent(this, AlarmReceiver.class);
-    PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 42, alarmIntent, PendingIntent.FLAG_CANCEL_CURRENT);
-    AlarmManager am = (AlarmManager) this.getSystemService(Context.ALARM_SERVICE);
-    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextAlarm.getTimeInMillis(), pendingIntent);
-    // TODO: </DUPLICATE_CODE>
+    Logger.log(this, "MainActivity.onCreate");
+    Scheduler.schedule(this);
   }
 
   private void requestPermissions() {
