@@ -9,6 +9,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.widget.Button;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import com.jakewharton.retrofit2.adapter.rxjava2.HttpException;
@@ -38,6 +39,33 @@ public class MainActivity extends AppCompatActivity {
 
     Logger.log(this, "MainActivity.onCreate");
     Scheduler.schedule(this);
+
+    Button button = findViewById(R.id.button2);
+    button.setOnClickListener(v -> {
+      this.login()
+          .flatMap(res -> this.commute(res.token))
+          .subscribe(
+              res -> Logger.log(this, "Yey, success!"),
+              throwable -> {
+                Logger.log(this, "Oh no, there was an error: " + throwable.getMessage());
+                throwable.printStackTrace();
+              }
+          );
+    });
+
+    Button startServiceBtn = findViewById(R.id.startServiceBtn);
+    startServiceBtn.setOnClickListener(v -> {
+      Intent serviceIntent = new Intent(this, LocationUpdatesService.class);
+      serviceIntent.setAction("debug");
+      startForegroundService(serviceIntent);
+    });
+
+    Button stopServiceBtn = findViewById(R.id.stopServiceBtn);
+    stopServiceBtn.setOnClickListener(v -> {
+      Intent serviceIntent = new Intent(this, LocationUpdatesService.class);
+      serviceIntent.setAction("stop");
+      startForegroundService(serviceIntent);
+    });
   }
 
   private void requestPermissions() {

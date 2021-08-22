@@ -87,6 +87,15 @@ public class LocationUpdatesService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     Logger.log(getApplicationContext(), "LocationUpdatesService.onStartCommand");
 
+    if (Objects.equals(intent.getAction(), "debug")) {
+      mDebugMode = true;
+    }
+
+    if (Objects.equals(intent.getAction(), "stop")) {
+      this.stopService();
+      return STOP_FOREGROUND_REMOVE;
+    }
+
     mServiceStartTime = Calendar.getInstance().getTimeInMillis();
     createNotificationChannel();
     startForeground(NOTIFICATION_ID, this.buildNotification("waiting for 1st location..."));
@@ -249,6 +258,9 @@ public class LocationUpdatesService extends Service {
   }
 
   private boolean shouldStop(Location currentLocation) {
+    if (mDebugMode) {
+      return false;
+    }
     long serviceRunningDuration = (Calendar.getInstance().getTimeInMillis() - mServiceStartTime);
     long commutingDuration = (Calendar.getInstance().getTimeInMillis() - mCommutingStartTime);
     final boolean targetReached = targetReached(currentLocation);
