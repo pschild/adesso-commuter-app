@@ -9,28 +9,33 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.location.Location;
 import android.os.Build;
 import android.os.IBinder;
-import android.util.Base64;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
-import com.android.volley.DefaultRetryPolicy;
-import com.android.volley.Request.Method;
-import com.android.volley.RequestQueue;
-import com.android.volley.toolbox.JsonObjectRequest;
-import com.android.volley.toolbox.Volley;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.Task;
+import com.jakewharton.retrofit2.adapter.rxjava2.HttpException;
+import de.pschild.adessocommutingnotifier.api.HttpClient;
+import de.pschild.adessocommutingnotifier.api.model.AuthResult;
+import de.pschild.adessocommutingnotifier.api.model.CommutingResult;
+import de.pschild.adessocommutingnotifier.api.model.CommutingStatusResult;
+import de.pschild.adessocommutingnotifier.api.model.Credentials;
+import io.reactivex.Observable;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.schedulers.Schedulers;
 import java.util.Calendar;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Objects;
 
 public class LocationUpdatesService extends Service {
+
+  private boolean mDebugMode = false;
 
   private static final String CHANNEL_ID = "ForegroundServiceChannel";
   private static final int NOTIFICATION_ID = 12345678;
@@ -218,17 +223,29 @@ public class LocationUpdatesService extends Service {
   private void saveCoordinates(double lat, double lng) {
     Logger.log(getApplicationContext(), "Calling Endpoint (saveCoordinates) with [" + lat + ", " + lng + "]...");
 
-    RequestQueue queue = Volley.newRequestQueue(this);
-    String url = BuildConfig.endpoint + "/from/" + lat + "," + lng + "/to/" + mDestination[0] + "," + mDestination[1];
-    queue.add(buildGetRequest(url));
+    this.login()
+        .flatMap(res -> this.commute(res.token, lat, lng))
+        .subscribe(
+            res -> Logger.log(getApplicationContext(), "Yey, success!"),
+            throwable -> {
+              Logger.log(getApplicationContext(), "Oh no, there was an error: " + throwable.getMessage());
+              throwable.printStackTrace();
+            }
+        );
   }
 
   private void saveCommutingStatus(CommutingState state) {
     Logger.log(getApplicationContext(), "Calling Endpoint (saveCommutingStatus) with " + state.label + "...");
 
-    RequestQueue queue = Volley.newRequestQueue(this);
-    String url = BuildConfig.endpoint + "/commuting-state/" + state.label;
-    queue.add(buildGetRequest(url));
+    this.login()
+        .flatMap(res -> this.updateCommutingStatus(res.token, state))
+        .subscribe(
+            res -> Logger.log(getApplicationContext(), "Yey, success!"),
+            throwable -> {
+              Logger.log(getApplicationContext(), "Oh no, there was an error: " + throwable.getMessage());
+              throwable.printStackTrace();
+            }
+        );
   }
 
   private boolean shouldStop(Location currentLocation) {
@@ -281,25 +298,76 @@ public class LocationUpdatesService extends Service {
     return distance[0];
   }
 
-  private JsonObjectRequest buildGetRequest(String url) {
-    JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Method.GET, url, null,
-        response -> Logger.log(getApplicationContext(), "Success! " + response.toString()),
-        error -> Logger.log(getApplicationContext(), "Error! " + error.toString())) {
-
-      @Override
-      public Map<String, String> getHeaders() {
-        // build and put header for Basic Auth
-        HashMap<String, String> headers = new HashMap<>();
-        String credentials = BuildConfig.user + ":" + BuildConfig.password;
-        String auth = "Basic " + Base64.encodeToString(credentials.getBytes(), Base64.NO_WRAP);
-        headers.put("Authorization", auth);
-        return headers;
-      }
-    };
-    jsonObjectRequest.setRetryPolicy(new DefaultRetryPolicy(
-        30000,
-        2,
-        DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
-    return jsonObjectRequest;
+  // <SharedPreferences>
+  private void saveToken(String token) {
+    Logger.log(getApplicationContext(), "Got token, saving...");
+    final SharedPreferences prefs = getApplicationContext().getSharedPreferences("secrets",
+        Context.MODE_PRIVATE);
+    final SharedPreferences.Editor edit = prefs.edit();
+    edit.putString("token", token);
+    edit.apply();
   }
+
+  private String loadToken() {
+    SharedPreferences prefs = getApplicationContext().getSharedPreferences("secrets",
+        Context.MODE_PRIVATE);
+    return prefs.getString("token", null);
+  }
+
+  private void removeToken() {
+    final SharedPreferences prefs = getApplicationContext().getSharedPreferences("secrets",
+        Context.MODE_PRIVATE);
+    final SharedPreferences.Editor edit = prefs.edit();
+    edit.remove("token");
+    edit.apply();
+  }
+  // </SharedPreferences>
+
+  // <HTTP Calls>
+  private Observable<AuthResult> login() {
+    final String token = this.loadToken();
+    if (token != null) {
+      Logger.log(getApplicationContext(), "Use local token");
+      return Observable.just(new AuthResult(token, null));
+    }
+
+    Logger.log(getApplicationContext(), "No local token available, logging in...");
+    return HttpClient.getApiService().login(new Credentials(BuildConfig.user, BuildConfig.password))
+        .observeOn(AndroidSchedulers.mainThread())
+        .subscribeOn(Schedulers.io())
+        .doOnNext(res -> this.saveToken(res.token));
+  }
+
+  private Observable<CommutingResult> commute(String authToken, double lat, double lng) {
+    Logger.log(getApplicationContext(), "Calling saveCoordinates endpoint...");
+    return HttpClient.getApiService().commute("Bearer " + authToken, lat, lng, mDestination[0], mDestination[1])
+        .observeOn(AndroidSchedulers.mainThread())
+        .subscribeOn(Schedulers.io())
+        .onErrorResumeNext(err -> {
+          Logger.log(getApplicationContext(), "Error: " + ((HttpException) err).code());
+          if (((HttpException) err).code() == 401) {
+            // unauthorized => login and retry
+            this.removeToken();
+            return this.login().flatMap(res -> this.commute(res.token, lat, lng));
+          }
+          return Observable.error(err);
+        });
+  }
+
+  private Observable<CommutingStatusResult> updateCommutingStatus(String authToken, CommutingState state) {
+    Logger.log(getApplicationContext(), "Calling updateCommutingStatus endpoint...");
+    return HttpClient.getApiService().updateCommutingStatus("Bearer " + authToken, state.label)
+        .observeOn(AndroidSchedulers.mainThread())
+        .subscribeOn(Schedulers.io())
+        .onErrorResumeNext(err -> {
+          Logger.log(getApplicationContext(), "Error: " + ((HttpException) err).code());
+          if (((HttpException) err).code() == 401) {
+            // unauthorized => login and retry
+            this.removeToken();
+            return this.login().flatMap(res -> this.updateCommutingStatus(res.token, state));
+          }
+          return Observable.error(err);
+        });
+  }
+  // </HTTP Calls>
 }
