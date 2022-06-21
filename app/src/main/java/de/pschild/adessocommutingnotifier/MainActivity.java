@@ -7,11 +7,13 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.widget.Button;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.FileProvider;
 import com.jakewharton.retrofit2.adapter.rxjava2.HttpException;
 import de.pschild.adessocommutingnotifier.api.HttpClient;
 import de.pschild.adessocommutingnotifier.api.model.AuthResult;
@@ -20,6 +22,7 @@ import de.pschild.adessocommutingnotifier.api.model.Credentials;
 import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.schedulers.Schedulers;
+import java.io.File;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -65,6 +68,11 @@ public class MainActivity extends AppCompatActivity {
       Intent serviceIntent = new Intent(this, LocationUpdatesService.class);
       serviceIntent.setAction("stop");
       startForegroundService(serviceIntent);
+    });
+
+    Button openLogBtn = findViewById(R.id.openLogBtn);
+    openLogBtn.setOnClickListener(v -> {
+      this.openLog();
     });
   }
 
@@ -144,5 +152,16 @@ public class MainActivity extends AppCompatActivity {
           }
           return Observable.error(err);
         });
+  }
+
+  private void openLog() {
+    File documentDir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
+    File file = new File(documentDir, "Log.txt");
+    Uri uri = FileProvider.getUriForFile(this, getApplicationContext().getPackageName() + ".provider", file);
+
+    Intent intent = new Intent(Intent.ACTION_VIEW);
+    intent.setDataAndType(uri, "*/*");
+    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+    startActivity(intent);
   }
 }

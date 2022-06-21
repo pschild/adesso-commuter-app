@@ -194,6 +194,7 @@ public class LocationUpdatesService extends Service {
             if (
                 (getDistance(currentLocation, mLastLocation) >= MIN_MOVEMENT_FOR_REQUEST && currentLocation.getSpeed() >= MIN_SPEED_FOR_REQUEST)
                 || mIsCommuting
+                || mDebugMode
               ) {
               if (!mIsCommuting) {
                 mIsCommuting = true;
@@ -235,9 +236,9 @@ public class LocationUpdatesService extends Service {
     this.login()
         .flatMap(res -> this.commute(res.token, lat, lng))
         .subscribe(
-            res -> Logger.log(getApplicationContext(), "Yey, success!"),
+            res -> Logger.log(getApplicationContext(), "Success: average=" + res.average + "min"),
             throwable -> {
-              Logger.log(getApplicationContext(), "Oh no, there was an error: " + throwable.getMessage());
+              Logger.log(getApplicationContext(), "Error: " + throwable.getMessage());
               throwable.printStackTrace();
             }
         );
@@ -249,9 +250,9 @@ public class LocationUpdatesService extends Service {
     this.login()
         .flatMap(res -> this.updateCommutingStatus(res.token, state))
         .subscribe(
-            res -> Logger.log(getApplicationContext(), "Yey, success!"),
+            res -> Logger.log(getApplicationContext(), "Success: newState=" + res.newState),
             throwable -> {
-              Logger.log(getApplicationContext(), "Oh no, there was an error: " + throwable.getMessage());
+              Logger.log(getApplicationContext(), "Error: " + throwable.getMessage());
               throwable.printStackTrace();
             }
         );
@@ -276,6 +277,9 @@ public class LocationUpdatesService extends Service {
   }
 
   private boolean shouldMakeRequest() {
+    if (mDebugMode) {
+      return true;
+    }
     long elapsedSecondsSinceLastRequest = (Calendar.getInstance().getTimeInMillis() - mLastRequestTime);
     return elapsedSecondsSinceLastRequest >= REQUEST_INTERVAL;
   }
@@ -356,9 +360,10 @@ public class LocationUpdatesService extends Service {
         .observeOn(AndroidSchedulers.mainThread())
         .subscribeOn(Schedulers.io())
         .onErrorResumeNext(err -> {
-          Logger.log(getApplicationContext(), "Error: " + ((HttpException) err).code());
+          Logger.log(getApplicationContext(), "Error: code=" + ((HttpException) err).code());
           if (((HttpException) err).code() == 401) {
             // unauthorized => login and retry
+            Logger.log(getApplicationContext(), "unauthorized => login and retry");
             this.removeToken();
             return this.login().flatMap(res -> this.commute(res.token, lat, lng));
           }
